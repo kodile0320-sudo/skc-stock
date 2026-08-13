@@ -35,9 +35,9 @@ def check_password():
 if check_password():
     
     st.title("📦 재고 데이터 검색 프로그램")
-    st.caption("키워드 입력 및 LOT 정밀 필터링, 엑셀 파일 즉시 업로드 기능을 제공합니다.")
+    st.caption("키워드 입력, LOT 및 기호 정밀 필터링, 엑셀 파일 즉시 업로드 기능을 제공합니다.")
 
-    # 1. 엑셀 파일 직접 업로드 기능 (웹 화면에서 바로 교체가능)
+    # 1. 엑셀 파일 직접 업로드 기능
     st.sidebar.header("📁 데이터 파일 관리")
     uploaded_file = st.sidebar.file_uploader("최신 엑셀 파일 업로드 (.xlsx)", type=["xlsx"])
     
@@ -101,33 +101,56 @@ if check_password():
         return output.getvalue()
 
     if df is not None:
-        col_search, col_lot = st.columns([7, 5])
+        # 검색창, LOT 필터, 기호 필터를 3개 컬럼으로 배치
+        col_search, col_lot, col_symbol = st.columns([5, 4, 3])
         
         with col_search:
-            search_term = st.text_input("🔍 품목명/키워드를 입력하세요 (예: 노랑쌈, 시금치 등)", "")
+            search_term = st.text_input("🔍 품목명/키워드를 입력하세요 (예: 신만복, 시금치 등)", "")
 
         filtered_df = df.copy()
 
+        # 키워드 필터링
         if search_term:
             mask = filtered_df.astype(str).apply(lambda row: row.str.contains(search_term, case=False, na=False)).any(axis=1)
             filtered_df = filtered_df[mask]
 
+        # LOT 번호 필터링
         with col_lot:
-            if search_term and 'LOT번호' in filtered_df.columns and not filtered_df.empty:
+            if 'LOT번호' in filtered_df.columns and not filtered_df.empty:
                 available_lots = filtered_df['LOT번호'].dropna().astype(str).unique().tolist()
                 available_lots.sort()
                 lot_options = ["전체 LOT 보기"] + available_lots
-                selected_lot = st.selectbox("🏷️ 특정 LOT 번호 정밀 필터", lot_options)
+                selected_lot = st.selectbox("🏷️ 특정 LOT 번호 필터", lot_options)
                 
                 if selected_lot != "전체 LOT 보기":
                     filtered_df = filtered_df[filtered_df['LOT번호'].astype(str) == selected_lot]
 
-        if search_term:
+        # 기호 필터링 (신규 추가!)
+        with col_symbol:
+            if '기호' in filtered_df.columns and not filtered_df.empty:
+                # 기호 데이터를 정수나 깔끔한 문자열 형태로 정렬
+                raw_symbols = filtered_df['기호'].dropna().tolist()
+                clean_symbols = []
+                for s in raw_symbols:
+                    try:
+                        clean_symbols.append(str(int(float(s))))
+                    except:
+                        clean_symbols.append(str(s).strip())
+                
+                clean_symbols = sorted(list(set(clean_symbols)))
+                symbol_options = ["전체 기호 보기"] + clean_symbols
+                selected_symbol = st.selectbox("📌 특정 기호 필터", symbol_options)
+                
+                if selected_symbol != "전체 기호 보기":
+                    # 선택한 기호와 일치하는 행만 선택
+                    filtered_df = filtered_df[filtered_df['기호'].astype(str).apply(clean_format) == selected_symbol]
+
+        if search_term or (selected_lot != "전체 LOT 보기" if 'selected_lot' in locals() else False) or (selected_symbol != "전체 기호 보기" if 'selected_symbol' in locals() else False):
             st.divider()
             col_res_info, col_download = st.columns([7, 5])
             
             with col_res_info:
-                st.success(f"**'{search_term}'** 검색 결과: 총 **{len(filtered_df)}**건이 조회되었습니다.")
+                st.success(f"검색 결과: 총 **{len(filtered_df)}**건이 조회되었습니다.")
                 
             with col_download:
                 if not filtered_df.empty:
@@ -135,7 +158,7 @@ if check_password():
                     st.download_button(
                         label="📥 검색 결과 엑셀 파일 다운로드",
                         data=excel_data,
-                        file_name=f"검색결과_{search_term}.xlsx",
+                        file_name=f"검색결과_{search_term if search_term else '필터'}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True
                     )
@@ -144,7 +167,7 @@ if check_password():
             st.dataframe(styled_df, use_container_width=True)
 
         else:
-            st.info("검색어를 입력하시면 해당하는 데이터만 즉시 필터링됩니다.")
+            st.info("검색어 입력 또는 LOT/기호 필터를 선택하시면 해당하는 데이터만 즉시 필터링됩니다.")
             styled_df = df.style.format(clean_format).apply(highlight_columns, axis=1)
             st.dataframe(styled_df, use_container_width=True)
 
